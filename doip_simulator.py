@@ -7,12 +7,11 @@ DoIP ECU模拟器 - 在本地模拟一个DoIP网关+ECU
 默认端口: 13400
 """
 
+import logging
 import socket
 import struct
-import threading
-import time
 import sys
-import logging
+import threading
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [模拟器] %(message)s")
 logger = logging.getLogger(__name__)
@@ -25,21 +24,21 @@ INVERSE_VERSION = 0xFD
 # 模拟ECU数据
 ECU_DATA = {
     # DID: 数据内容
-    0xF190: b"LSVAB1234S0000001",       # VIN码
-    0xF187: b"31234567890",             # 零件号
-    0xF188: b"SW_V2.1.0",              # 软件版本号
-    0xF189: b"2024-03-15",             # 软件版本日期
-    0xF18A: b"SUPPLIER_001",           # 供应商标识
-    0xF18B: b"20240101",               # 生产日期
-    0xF18C: b"SN20240001",             # 序列号
-    0xF191: b"HW_V1.0",               # 硬件版本号
-    0xF192: b"SUP_HW_V1.0",           # 供应商硬件版本号
-    0xF193: b"SUP_SW_V2.1",           # 供应商软件版本号
-    0xF194: b"20240310",               # 供应商软件日期
-    0xF197: b"GW_MODULE",             # 系统名称
-    0xF198: b"TESTER_001",            # Tester序列号
-    0xF199: b"20240315",               # 编程日期
-    0xF186: b"\x01",                   # 当前会话(默认)
+    0xF190: b"LSVAB1234S0000001",  # VIN码
+    0xF187: b"31234567890",  # 零件号
+    0xF188: b"SW_V2.1.0",  # 软件版本号
+    0xF189: b"2024-03-15",  # 软件版本日期
+    0xF18A: b"SUPPLIER_001",  # 供应商标识
+    0xF18B: b"20240101",  # 生产日期
+    0xF18C: b"SN20240001",  # 序列号
+    0xF191: b"HW_V1.0",  # 硬件版本号
+    0xF192: b"SUP_HW_V1.0",  # 供应商硬件版本号
+    0xF193: b"SUP_SW_V2.1",  # 供应商软件版本号
+    0xF194: b"20240310",  # 供应商软件日期
+    0xF197: b"GW_MODULE",  # 系统名称
+    0xF198: b"TESTER_001",  # Tester序列号
+    0xF199: b"20240315",  # 编程日期
+    0xF186: b"\x01",  # 当前会话(默认)
 }
 
 # 模拟DTC列表 (DTC 3字节 + 状态1字节)
@@ -51,9 +50,9 @@ ECU_DTCS = [
 
 # 模拟ECU状态
 ecu_state = {
-    "session": 0x01,       # 当前会话
-    "security_level": 0,   # 安全等级 (0=未解锁)
-    "dtc_setting": True,   # DTC记录开关
+    "session": 0x01,  # 当前会话
+    "security_level": 0,  # 安全等级 (0=未解锁)
+    "dtc_setting": True,  # DTC记录开关
     "comm_control": True,  # 通信控制
 }
 
@@ -110,7 +109,7 @@ def handle_diagnostic_message(source_addr: int, target_addr: int,
         response = bytes([0x62])
         i = 1
         while i + 1 < len(uds_data):
-            did = struct.unpack(">H", uds_data[i:i+2])[0]
+            did = struct.unpack(">H", uds_data[i:i + 2])[0]
             if did in ECU_DATA:
                 response += struct.pack(">H", did) + ECU_DATA[did]
             else:
@@ -451,7 +450,7 @@ def main():
         while True:
             conn, addr = server.accept()
             client_thread = threading.Thread(target=handle_client,
-                                            args=(conn, addr), daemon=True)
+                                             args=(conn, addr), daemon=True)
             client_thread.start()
     except KeyboardInterrupt:
         print("\n  模拟器已停止")

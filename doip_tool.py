@@ -849,19 +849,21 @@ class DoIPTool(cmd.Cmd):
         if resp.positive:
             print(f"  [肯定响应] 原始数据: {resp.raw.hex().upper()}")
         else:
-            print(f"  [否定响应] 服务: 0x{resp.service_id:02X}, "
+            print(f"  [否定响应] 原始数据: {resp.raw.hex().upper()}")
+            print(f"             服务: 0x{resp.service_id:02X}, "
                   f"NRC: 0x{resp.nrc:02X} ({resp.nrc_description})")
 
-    def _hex_dump(self, data: bytes, start_addr: int = 0):
-        """格式化hex dump输出"""
-        for offset in range(0, len(data), 16):
-            chunk = data[offset:offset + 16]
-            hex_part = " ".join(f"{b:02X}" for b in chunk)
-            ascii_part = "".join(
-                chr(b) if 32 <= b < 127 else "." for b in chunk
-            )
-            addr = start_addr + offset
-            print(f"  {addr:08X}: {hex_part:<48} |{ascii_part}|")
+
+def _hex_dump(self, data: bytes, start_addr: int = 0):
+    """格式化hex dump输出"""
+    for offset in range(0, len(data), 16):
+        chunk = data[offset:offset + 16]
+        hex_part = " ".join(f"{b:02X}" for b in chunk)
+        ascii_part = "".join(
+            chr(b) if 32 <= b < 127 else "." for b in chunk
+        )
+        addr = start_addr + offset
+        print(f"  {addr:08X}: {hex_part:<48} |{ascii_part}|")
 
 
 def main():

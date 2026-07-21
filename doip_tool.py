@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-DoIP诊断工具 - 基于命令行的车载DoIP诊断测试工具
-支持车辆发现、连接管理、UDS诊断服务等功能
-"""
-
 import cmd
 import logging
 import os

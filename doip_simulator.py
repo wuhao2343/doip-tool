@@ -21,6 +21,10 @@ DOIP_HEADER_LEN = 8
 PROTOCOL_VERSION = 0x02
 INVERSE_VERSION = 0xFD
 
+# 模拟DoIP网关和后端ECU地址
+GATEWAY_LOGICAL_ADDRESS = 0x1720
+ECU_LOGICAL_ADDRESS = 0x07E0
+
 # 模拟ECU数据
 ECU_DATA = {
     # DID: 数据内容
@@ -59,6 +63,14 @@ ecu_state = {
 # 安全访问种子（模拟用固定值）
 SECURITY_SEED = b"\x12\x34\x56\x78"
 SECURITY_KEY = b"\x87\x65\x43\x21"  # 期望的密钥（实际是种子取反）
+
+
+def reset_ecu_state():
+    ecu_state["session"] = 0x01
+    ecu_state["security_level"] = 0
+    ecu_state["dtc_setting"] = True
+    ecu_state["comm_control"] = True
+    ECU_DATA[0xF186] = b"\x01"
 
 
 def build_doip_header(payload_type: int, payload_length: int) -> bytes:
@@ -268,7 +280,7 @@ def handle_client(conn: socket.socket, addr):
     logger.info(f"客户端连接: {addr}")
     routing_activated = False
     tester_addr = 0
-    entity_addr = 0x0001  # 模拟ECU地址
+    entity_addr = GATEWAY_LOGICAL_ADDRESS
 
     buffer = b""
 
@@ -302,7 +314,10 @@ def handle_client(conn: socket.socket, addr):
                                                    tester_addr, entity_addr, 0x10)
                         resp = build_doip_message(0x0006, resp_payload)
                         conn.sendall(resp)
-                        logger.info(f"路由激活成功 - 测试仪: 0x{tester_addr:04X}")
+                        logger.info(
+                            f"路由激活成功 - 测试仪: 0x{tester_addr:04X}, "
+                            f"网关实体: 0x{entity_addr:04X}, 类型: 0x{activation_type:02X}"
+                        )
 
                 # DoIP实体状态请求
                 elif payload_type == 0x4001:
@@ -335,22 +350,49 @@ def handle_client(conn: socket.socket, addr):
                         dst = struct.unpack(">H", payload[2:4])[0]
                         uds_data = payload[4:]
 
-                        logger.info(f"收到诊断请求 [{src:04X}->{dst:04X}]: "
-                                    f"{uds_data.hex().upper()}")
+                        logger.info(
+                            f"网关收到诊断请求 [{src:04X}->{dst:04X}]: "
+                            f"{uds_data.hex().upper()}"
+                        )
 
                         # 发送ACK
                         ack_payload = struct.pack(">HHB", dst, src, 0x00)
                         ack = build_doip_message(0x8002, ack_payload)
                         conn.sendall(ack)
+                        logger.info(
+                            f"网关已发送DoIP ACK [{dst:04X}->{src:04X}], ack_code=0x00"
+                        )
 
-                        # 处理UDS请求
-                        uds_response = handle_diagnostic_message(src, dst, uds_data)
-                        if uds_response:
-                            # 发送诊断响应
-                            diag_payload = struct.pack(">HH", dst, src) + uds_response
-                            diag_resp = build_doip_message(0x8001, diag_payload)
-                            conn.sendall(diag_resp)
-                            logger.info(f"发送诊断响应: {uds_response.hex().upper()}")
+                        if dst == ECU_LOGICAL_ADDRESS:
+                            logger.info(
+                                f"网关路由到后端ECU 0x{ECU_LOGICAL_ADDRESS:04X}"
+                            )
+                            uds_response = handle_diagnostic_message(src, dst, uds_data)
+                            if uds_response:
+                                diag_payload = struct.pack(">HH", dst, src) + uds_response
+                                diag_resp = build_doip_message(0x8001, diag_payload)
+                                conn.sendall(diag_resp)
+                                logger.info(
+                                    f"后端ECU响应 [{dst:04X}->{src:04X}]: "
+                                    f"{uds_response.hex().upper()}"
+                                )
+                            else:
+                                logger.info(
+                                    f"后端ECU 0x{ECU_LOGICAL_ADDRESS:04X} 抑制响应"
+                                )
+
+                        elif dst == GATEWAY_LOGICAL_ADDRESS:
+                            logger.info(
+                                f"请求目标是DoIP网关实体 0x{GATEWAY_LOGICAL_ADDRESS:04X}。"
+                                "模拟器仅返回DoIP ACK，不返回UDS响应，"
+                                "用于模拟把网关地址误当成ECU地址的场景。"
+                            )
+
+                        else:
+                            logger.info(
+                                f"网关没有到目标 0x{dst:04X} 的路由。"
+                                "模拟器仅返回DoIP ACK，不返回UDS响应。"
+                            )
 
                 else:
                     logger.warning(f"未知载荷类型: 0x{payload_type:04X}")
@@ -365,9 +407,7 @@ def handle_client(conn: socket.socket, addr):
     finally:
         conn.close()
         logger.info(f"客户端断开: {addr}")
-        # 重置ECU状态
-        ecu_state["session"] = 0x01
-        ecu_state["security_level"] = 0
+        reset_ecu_state()
 
 
 def run_udp_server(port: int):
@@ -388,17 +428,19 @@ def run_udp_server(port: int):
                     logger.info(f"收到车辆发现请求 from {addr}")
                     # 构建车辆公告响应
                     vin = b"LSVAB1234S0000001"  # 17字节VIN
-                    logical_addr = struct.pack(">H", 0x0001)
+                    logical_addr = struct.pack(">H", GATEWAY_LOGICAL_ADDRESS)
                     eid = b"\x00\x11\x22\x33\x44\x55"  # 6字节EID
                     gid = b"\xAA\xBB\xCC\xDD\xEE\xFF"  # 6字节GID
                     further_action = b"\x00"
                     sync_status = b"\x00"
 
                     announcement = (vin + logical_addr + eid + gid +
-                                    further_action + sync_status)
+                                     further_action + sync_status)
                     resp = build_doip_message(0x0004, announcement)
                     sock.sendto(resp, addr)
-                    logger.info(f"已发送车辆公告到 {addr}")
+                    logger.info(
+                        f"已发送车辆公告到 {addr}, 网关实体地址: 0x{GATEWAY_LOGICAL_ADDRESS:04X}"
+                    )
 
         except Exception as e:
             logger.error(f"UDP处理异常: {e}")
@@ -408,17 +450,20 @@ def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 13400
 
     print("=" * 60)
-    print("  DoIP ECU模拟器")
+    print("  DoIP 网关 + ECU 模拟器")
     print("=" * 60)
     print(f"  TCP诊断端口:  {port}")
     print(f"  UDP发现端口:  {port}")
-    print(f"  ECU逻辑地址:  0x0001")
+    print(f"  DoIP网关地址: 0x{GATEWAY_LOGICAL_ADDRESS:04X}")
+    print(f"  后端ECU地址:  0x{ECU_LOGICAL_ADDRESS:04X}")
     print(f"  模拟VIN:      LSVAB1234S0000001")
     print(f"  安全访问密钥: {SECURITY_KEY.hex().upper()}")
     print("=" * 60)
     print("  模拟功能:")
     print("    - 车辆发现 (UDP广播响应)")
-    print("    - 路由激活")
+    print("    - 路由激活 (返回网关地址 0x1720)")
+    print("    - 网关转发到后端ECU 0x07E0")
+    print("    - 误发到网关地址时仅回DoIP ACK，不回UDS")
     print("    - 会话控制 (01/02/03)")
     print("    - 安全访问 (种子/密钥)")
     print("    - DID读写 (含VIN/软件版本等)")
@@ -431,8 +476,9 @@ def main():
     print("    - ECU复位")
     print("    - TesterPresent")
     print("=" * 60)
-    print("  在另一个终端运行: python doip_tool.py")
-    print("  然后执行: connect 127.0.0.1")
+    print("  示例:")
+    print("    正确目标: ip 127.0.0.1 -> target 0x07E0 -> connect -> 10 01 -> 22 F1 90")
+    print("    错误目标: ip 127.0.0.1 -> target 0x1720 -> connect -> 22 F1 90")
     print("=" * 60)
 
     # 启动UDP服务

@@ -35,12 +35,10 @@ VEHICLE_IP = None
 # 不确定时保持 "0.0.0.0"。
 LOCAL_BIND_IP = "0.0.0.0"
 
-# 诊断仪 Tester 逻辑地址，不是 IP 地址。
-# 常见值可能是 0x0E00、0x0E80，具体看整车诊断规范。
+# 诊断仪 Tester 逻辑地址。
 TESTER_LOGICAL_ADDRESS = 0x0E00
 
-# 目标 ECU 逻辑地址，不是 IP 地址。
-# 你要诊断哪个 ECU，就填哪个 ECU 的 DoIP/UDS 逻辑地址。
+# 目标 ECU 逻辑地址
 TARGET_LOGICAL_ADDRESS = 0x0001
 
 # Routing Activation 类型。
@@ -250,6 +248,8 @@ class DoIPClient:
         self.target_addr = TARGET_LOGICAL_ADDRESS
         self.sock = None
         self.routing_activated = False
+        self.discovered_entity_addr = None
+        self.routing_entity_addr = None
         self.tester_present_running = False
         self.tester_present_thread = None
 
@@ -302,11 +302,14 @@ class DoIPClient:
             print("Found DoIP entity:")
             print(f"  IP: {addr[0]}")
             print(f"  VIN: {info['vin']}")
-            print(f"  Logical Address: 0x{info['logical_address']:04X}")
+            print(f"  Entity Logical Address: 0x{info['logical_address']:04X}")
             print(f"  EID: {hex_bytes(info['eid'])}")
             print(f"  GID: {hex_bytes(info['gid'])}")
             print(f"  Further Action: 0x{info['further_action']:02X}")
             print(f"  Sync Status: 0x{info['sync_status']:02X}")
+
+            if self.discovered_entity_addr is None:
+                self.discovered_entity_addr = info["logical_address"]
 
         udp.close()
 
@@ -370,6 +373,7 @@ class DoIPClient:
 
         self.sock = None
         self.routing_activated = False
+        self.routing_entity_addr = None
 
     def routing_activation(self):
         if not self.sock:
@@ -415,7 +419,13 @@ class DoIPClient:
 
         if code == 0x10:
             self.routing_activated = True
+            self.routing_entity_addr = entity
             print("RoutingActivation OK.")
+            if self.target_addr == entity:
+                print(
+                    "Note: current UDS target equals DoIP entity address. "
+                    "If this node is a gateway, set `target` to the real ECU logical address."
+                )
             return True
 
         print("RoutingActivation rejected.")
@@ -437,6 +447,11 @@ class DoIPClient:
             f"TX UDS(source=0x{self.tester_addr:04X}, "
             f"target=0x{self.target_addr:04X}): {hex_bytes(uds)}"
         )
+        if self.routing_entity_addr is not None and self.target_addr != self.routing_entity_addr:
+            print(
+                f"Route via DoIP entity 0x{self.routing_entity_addr:04X} -> "
+                f"UDS target 0x{self.target_addr:04X}"
+            )
         self._send_raw(msg)
 
         if not wait_response:
@@ -459,6 +474,10 @@ class DoIPClient:
 
             if payload_type == PT_DIAGNOSTIC_MESSAGE_POSITIVE_ACK:
                 print(f"RX DoIP Diagnostic ACK: {hex_bytes(payload)}")
+                print(
+                    "DoIP ACK only: diagnostic message was accepted for routing. "
+                    "Still waiting for UDS response (0x8001)."
+                )
                 continue
 
             if payload_type == PT_DIAGNOSTIC_MESSAGE_NEGATIVE_ACK:
@@ -500,7 +519,18 @@ class DoIPClient:
 
             return uds
 
-        print("UDS response timeout.")
+        if self.routing_entity_addr is not None:
+            print(
+                f"UDS response timeout. No diagnostic response from target "
+                f"0x{self.target_addr:04X} via DoIP entity 0x{self.routing_entity_addr:04X}."
+            )
+            if self.target_addr == self.routing_entity_addr:
+                print(
+                    "Hint: target equals DoIP entity address. If this node is a gateway, "
+                    "change `target` to the real ECU logical address."
+                )
+        else:
+            print(f"UDS response timeout. No diagnostic response from target 0x{self.target_addr:04X}.")
         return None
 
     def _alive_check_response(self):
@@ -722,6 +752,16 @@ def main():
                 print(f"Routing activated: {client.routing_activated}")
                 print(f"Tester logical address: 0x{client.tester_addr:04X}")
                 print(f"Target logical address: 0x{client.target_addr:04X}")
+                discovered = (
+                    f"0x{client.discovered_entity_addr:04X}"
+                    if client.discovered_entity_addr is not None else "unknown"
+                )
+                routing_entity = (
+                    f"0x{client.routing_entity_addr:04X}"
+                    if client.routing_entity_addr is not None else "unknown"
+                )
+                print(f"Discovered DoIP entity address: {discovered}")
+                print(f"Routing Activation entity address: {routing_entity}")
                 print(f"DoIP version: 0x{DOIP_PROTOCOL_VERSION:02X}")
                 print(f"Routing activation type: 0x{ROUTING_ACTIVATION_TYPE:02X}")
 

@@ -119,6 +119,14 @@ PT_DIAGNOSTIC_MESSAGE_POSITIVE_ACK = 0x8002
 PT_DIAGNOSTIC_MESSAGE_NEGATIVE_ACK = 0x8003
 
 
+def print_section(title: str):
+    print(f"\n[{title}]")
+
+
+def print_kv(label: str, value):
+    print(f"  {label:<28} {value}")
+
+
 def hex_bytes(data: bytes) -> str:
     return data.hex(" ").upper()
 
@@ -598,89 +606,41 @@ class DoIPClient:
 
 
 def print_help():
-    print("""
-Commands:
+    print_section("Commands")
+    print("  discover                Search DoIP vehicle by UDP broadcast")
+    print("  ip <addr>               Set vehicle DoIP IP, example: ip 192.168.0.10")
+    print("  connect                 Connect TCP and auto run Routing Activation")
+    print("  ra                      Run Routing Activation manually")
+    print("  close                   Close TCP connection")
+    print("  source <hex>            Set tester logical address, example: source 0x0E00")
+    print("  target <hex>            Set target ECU logical address, example: target 0x1234")
+    print("  status                  Show current status")
+    print("  session default         Send 10 01")
+    print("  session extended        Send 10 03")
+    print("  session programming     Send 10 02")
+    print("  read <DID>              Send 22 <DID>, example: read F190")
+    print("  dtc                     Send 19 02 FF")
+    print("  clear <group>           Send 14 <group>, example: clear FFFFFF")
+    print("  reset hard|soft         Send 11 01 or 11 03")
+    print("  tp start|stop           Start or stop TesterPresent 3E 00")
+    print("  <hex bytes>             Send raw UDS, example: 22 F1 90 / 1003 / 19 02 FF")
+    print("  quit / exit             Exit")
 
-  help
-    Show help.
-
-  discover
-    Search DoIP vehicle by UDP broadcast.
-
-  ip <addr>
-    Set vehicle DoIP IP.
-    Example: ip 192.168.0.10
-
-  connect
-    Connect TCP and run Routing Activation if AUTO_ROUTING_ACTIVATION is True.
-
-  ra
-    Run Routing Activation manually.
-
-  close
-    Close TCP connection.
-
-  source <hex>
-    Set tester logical address.
-    Example: source 0x0E00
-
-  target <hex>
-    Set target ECU logical address.
-    Example: target 0x1234
-
-  status
-    Show current status.
-
-  session default
-    Send 10 01.
-
-  session extended
-    Send 10 03.
-
-  session programming
-    Send 10 02.
-
-  read <DID>
-    Send ReadDataByIdentifier.
-    Example: read F190
-
-  dtc
-    Send 19 02 FF.
-
-  clear <group>
-    Send ClearDiagnosticInformation.
-    Example: clear FFFFFF
-
-  reset hard
-    Send 11 01.
-
-  reset soft
-    Send 11 03.
-
-  tp start
-    Start TesterPresent 3E 00.
-
-  tp stop
-    Stop TesterPresent.
-
-  <hex bytes>
-    Send raw UDS directly.
-    Example: 22 F1 90
-    Example: 1003
-    Example: 19 02 FF
-
-  quit / exit
-    Exit.
-""")
+    print_section("Notes")
+    print("  connect 连接的是 DoIP 实体 IP；target 指定的是 UDS 目标逻辑地址")
+    print("  如果 Routing Activation 返回的 entity 与 target 相同，要确认它是不是网关地址")
 
 
 def main():
     client = DoIPClient()
 
-    print("DoIP + UDS console")
-    print("Type help for commands.")
-    print("Raw UDS can be sent directly, for example: 22 F1 90")
-    print("")
+    print("=" * 60)
+    print("DoIP + UDS Console")
+    print("=" * 60)
+    print("  help     查看命令")
+    print("  status   查看当前连接和地址状态")
+    print("  示例      ip 192.168.0.10 -> target 0x1234 -> connect -> 22 F1 90")
+    print("=" * 60)
 
     known_commands = {
         "help", "?", "discover", "ip", "connect", "ra", "close",
@@ -747,11 +707,12 @@ def main():
                 print(f"Target address set: 0x{client.target_addr:04X}")
 
             elif command == "status":
-                print(f"Vehicle IP: {client.vehicle_ip}")
-                print(f"TCP connected: {client.sock is not None}")
-                print(f"Routing activated: {client.routing_activated}")
-                print(f"Tester logical address: 0x{client.tester_addr:04X}")
-                print(f"Target logical address: 0x{client.target_addr:04X}")
+                print_section("Status")
+                print_kv("Vehicle IP", client.vehicle_ip or "not set")
+                print_kv("TCP connected", client.sock is not None)
+                print_kv("Routing activated", client.routing_activated)
+                print_kv("Tester logical address", f"0x{client.tester_addr:04X}")
+                print_kv("Target logical address", f"0x{client.target_addr:04X}")
                 discovered = (
                     f"0x{client.discovered_entity_addr:04X}"
                     if client.discovered_entity_addr is not None else "unknown"
@@ -760,10 +721,10 @@ def main():
                     f"0x{client.routing_entity_addr:04X}"
                     if client.routing_entity_addr is not None else "unknown"
                 )
-                print(f"Discovered DoIP entity address: {discovered}")
-                print(f"Routing Activation entity address: {routing_entity}")
-                print(f"DoIP version: 0x{DOIP_PROTOCOL_VERSION:02X}")
-                print(f"Routing activation type: 0x{ROUTING_ACTIVATION_TYPE:02X}")
+                print_kv("Discovered entity address", discovered)
+                print_kv("Routing entity address", routing_entity)
+                print_kv("DoIP version", f"0x{DOIP_PROTOCOL_VERSION:02X}")
+                print_kv("Routing activation type", f"0x{ROUTING_ACTIVATION_TYPE:02X}")
 
             elif command == "session":
                 if len(args) != 1:

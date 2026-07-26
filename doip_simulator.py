@@ -25,6 +25,17 @@ INVERSE_VERSION = 0xFD
 GATEWAY_LOGICAL_ADDRESS = 0x1720
 ECU_LOGICAL_ADDRESS = 0x07E0
 
+# RST模拟配置
+# False: 正常行为
+# True: 命中条件时在收到诊断请求后立即TCP RST断开
+SIMULATE_TCP_RST_ON_DIAG = True
+
+# 触发RST的目标地址。None 表示任意目标地址都触发。
+RST_TRIGGER_TARGET = 0x1721
+
+# 触发RST的UDS服务ID。None 表示任意服务都触发。
+RST_TRIGGER_SID = None
+
 # 模拟ECU数据
 ECU_DATA = {
     # DID: 数据内容
@@ -80,6 +91,29 @@ def build_doip_header(payload_type: int, payload_length: int) -> bytes:
 
 def build_doip_message(payload_type: int, payload: bytes) -> bytes:
     return build_doip_header(payload_type, len(payload)) + payload
+
+
+def should_simulate_tcp_rst(target_addr: int, uds_data: bytes) -> bool:
+    if not SIMULATE_TCP_RST_ON_DIAG:
+        return False
+
+    if RST_TRIGGER_TARGET is not None and target_addr != RST_TRIGGER_TARGET:
+        return False
+
+    if RST_TRIGGER_SID is not None:
+        if not uds_data or uds_data[0] != RST_TRIGGER_SID:
+            return False
+
+    return True
+
+
+def abort_connection_with_rst(conn: socket.socket, reason: str):
+    logger.info(f"模拟TCP RST断开: {reason}")
+    try:
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("hh", 1, 0))
+    except OSError as exc:
+        logger.warning(f"设置SO_LINGER失败，将直接关闭连接: {exc}")
+    conn.close()
 
 
 def handle_diagnostic_message(source_addr: int, target_addr: int,
@@ -355,6 +389,13 @@ def handle_client(conn: socket.socket, addr):
                             f"{uds_data.hex().upper()}"
                         )
 
+                        if should_simulate_tcp_rst(dst, uds_data):
+                            abort_connection_with_rst(
+                                conn,
+                                f"target=0x{dst:04X}, uds={uds_data.hex().upper()}"
+                            )
+                            return
+
                         # 发送ACK
                         ack_payload = struct.pack(">HHB", dst, src, 0x00)
                         ack = build_doip_message(0x8002, ack_payload)
@@ -458,12 +499,14 @@ def main():
     print(f"  后端ECU地址:  0x{ECU_LOGICAL_ADDRESS:04X}")
     print(f"  模拟VIN:      LSVAB1234S0000001")
     print(f"  安全访问密钥: {SECURITY_KEY.hex().upper()}")
+    print(f"  TCP RST模拟:  {'ON' if SIMULATE_TCP_RST_ON_DIAG else 'OFF'}")
     print("=" * 60)
     print("  模拟功能:")
     print("    - 车辆发现 (UDP广播响应)")
     print("    - 路由激活 (返回网关地址 0x1720)")
     print("    - 网关转发到后端ECU 0x07E0")
     print("    - 误发到网关地址时仅回DoIP ACK，不回UDS")
+    print("    - 可选: 收到诊断请求后立即TCP RST断开")
     print("    - 会话控制 (01/02/03)")
     print("    - 安全访问 (种子/密钥)")
     print("    - DID读写 (含VIN/软件版本等)")
@@ -479,6 +522,10 @@ def main():
     print("  示例:")
     print("    正确目标: ip 127.0.0.1 -> target 0x07E0 -> connect -> 10 01 -> 22 F1 90")
     print("    错误目标: ip 127.0.0.1 -> target 0x1720 -> connect -> 22 F1 90")
+    if SIMULATE_TCP_RST_ON_DIAG:
+        trigger_target = "ANY" if RST_TRIGGER_TARGET is None else f"0x{RST_TRIGGER_TARGET:04X}"
+        trigger_sid = "ANY" if RST_TRIGGER_SID is None else f"0x{RST_TRIGGER_SID:02X}"
+        print(f"    RST触发条件: target={trigger_target}, sid={trigger_sid}")
     print("=" * 60)
 
     # 启动UDP服务

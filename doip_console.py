@@ -1,20 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-交互式 DoIP + UDS 诊断脚本
-
-用法示例：
-  discover
-  ip 192.168.0.10
-  source 0x0E00
-  target 0x1234
-  connect
-  10 03
-  22 F1 90
-  19 02 FF
-"""
-
 import socket
 import struct
 import sys

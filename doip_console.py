@@ -127,6 +127,10 @@ def print_kv(label: str, value):
     print(f"  {label:<28} {value}")
 
 
+def ts_prefix() -> str:
+    return f"[{time.strftime('%H:%M:%S')}.{int((time.time() % 1) * 1000):03d}]"
+
+
 def hex_bytes(data: bytes) -> str:
     return data.hex(" ").upper()
 
@@ -275,8 +279,8 @@ class DoIPClient:
             udp.close()
             return []
 
-        print(f"TX UDP discovery -> {DISCOVERY_BROADCAST_IP}:{DOIP_UDP_PORT}")
-        print(f"TX DoIP: {hex_bytes(msg)}")
+        print(f"{ts_prefix()} TX UDP discovery -> {DISCOVERY_BROADCAST_IP}:{DOIP_UDP_PORT}")
+        print(f"{ts_prefix()} TX DoIP: {hex_bytes(msg)}")
         udp.sendto(msg, (DISCOVERY_BROADCAST_IP, DOIP_UDP_PORT))
 
         vehicles = []
@@ -288,8 +292,8 @@ class DoIPClient:
             except socket.timeout:
                 break
 
-            print(f"RX UDP from {addr[0]}:{addr[1]}")
-            print(f"RX DoIP: {hex_bytes(data)}")
+            print(f"{ts_prefix()} RX UDP from {addr[0]}:{addr[1]}")
+            print(f"{ts_prefix()} RX DoIP: {hex_bytes(data)}")
 
             try:
                 _, payload_type, payload_len = parse_doip_header(data[:8])
@@ -397,7 +401,7 @@ class DoIPClient:
         msg = build_doip_message(PT_ROUTING_ACTIVATION_REQUEST, payload)
 
         print(
-            f"TX RoutingActivation: tester=0x{self.tester_addr:04X}, "
+            f"{ts_prefix()} TX RoutingActivation: tester=0x{self.tester_addr:04X}, "
             f"type=0x{ROUTING_ACTIVATION_TYPE:02X}"
         )
         self._send_raw(msg)
@@ -421,7 +425,7 @@ class DoIPClient:
         code = payload[4]
 
         print(
-            f"RX RoutingActivation: tester=0x{tester:04X}, "
+            f"{ts_prefix()} RX RoutingActivation: tester=0x{tester:04X}, "
             f"entity=0x{entity:04X}, code=0x{code:02X}"
         )
 
@@ -452,7 +456,7 @@ class DoIPClient:
         msg = build_doip_message(PT_DIAGNOSTIC_MESSAGE, payload)
 
         print(
-            f"TX UDS(source=0x{self.tester_addr:04X}, "
+            f"{ts_prefix()} TX UDS(source=0x{self.tester_addr:04X}, "
             f"target=0x{self.target_addr:04X}): {hex_bytes(uds)}"
         )
         if self.routing_entity_addr is not None and self.target_addr != self.routing_entity_addr:
@@ -477,11 +481,11 @@ class DoIPClient:
             except socket.timeout:
                 continue
             except Exception as exc:
-                print(f"RX failed: {exc}")
+                print(f"{ts_prefix()} RX failed: {exc}")
                 return None
 
             if payload_type == PT_DIAGNOSTIC_MESSAGE_POSITIVE_ACK:
-                print(f"RX DoIP Diagnostic ACK: {hex_bytes(payload)}")
+                print(f"{ts_prefix()} RX DoIP Diagnostic ACK: {hex_bytes(payload)}")
                 print(
                     "DoIP ACK only: diagnostic message was accepted for routing. "
                     "Still waiting for UDS response (0x8001)."
@@ -489,7 +493,7 @@ class DoIPClient:
                 continue
 
             if payload_type == PT_DIAGNOSTIC_MESSAGE_NEGATIVE_ACK:
-                print(f"RX DoIP Diagnostic NACK: {hex_bytes(payload)}")
+                print(f"{ts_prefix()} RX DoIP Diagnostic NACK: {hex_bytes(payload)}")
                 return None
 
             if payload_type == PT_ALIVE_CHECK_REQUEST:
@@ -497,11 +501,11 @@ class DoIPClient:
                 continue
 
             if payload_type != PT_DIAGNOSTIC_MESSAGE:
-                print(f"RX other DoIP type=0x{payload_type:04X}, payload={hex_bytes(payload)}")
+                print(f"{ts_prefix()} RX other DoIP type=0x{payload_type:04X}, payload={hex_bytes(payload)}")
                 continue
 
             if len(payload) < 5:
-                print(f"RX invalid diagnostic payload: {hex_bytes(payload)}")
+                print(f"{ts_prefix()} RX invalid diagnostic payload: {hex_bytes(payload)}")
                 return None
 
             source = struct.unpack(">H", payload[0:2])[0]
@@ -509,7 +513,7 @@ class DoIPClient:
             uds = payload[4:]
 
             print(
-                f"RX UDS(source=0x{source:04X}, "
+                f"{ts_prefix()} RX UDS(source=0x{source:04X}, "
                 f"target=0x{target:04X}): {hex_bytes(uds)}"
             )
             print_uds_info(uds)
@@ -522,7 +526,7 @@ class DoIPClient:
                     print("ResponsePending wait timeout.")
                     return uds
 
-                print("RX NRC 0x78 ResponsePending, keep waiting...")
+                print(f"{ts_prefix()} RX NRC 0x78 ResponsePending, keep waiting...")
                 continue
 
             return uds
@@ -544,12 +548,12 @@ class DoIPClient:
     def _alive_check_response(self):
         payload = u16(self.tester_addr)
         msg = build_doip_message(PT_ALIVE_CHECK_RESPONSE, payload)
-        print("RX AliveCheckRequest")
+        print(f"{ts_prefix()} RX AliveCheckRequest")
         self._send_raw(msg)
 
     def _send_raw(self, data: bytes):
         if PRINT_DOIP_RAW:
-            print(f"TX DoIP: {hex_bytes(data)}")
+            print(f"{ts_prefix()} TX DoIP: {hex_bytes(data)}")
         self.sock.sendall(data)
 
     def _recv_exact(self, size: int) -> bytes:
@@ -567,7 +571,7 @@ class DoIPClient:
         payload = self._recv_exact(payload_length) if payload_length else b""
 
         if PRINT_DOIP_RAW:
-            print(f"RX DoIP: {hex_bytes(header + payload)}")
+            print(f"{ts_prefix()} RX DoIP: {hex_bytes(header + payload)}")
 
         return payload_type, payload
 

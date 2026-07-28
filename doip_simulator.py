@@ -12,6 +12,7 @@ import socket
 import struct
 import sys
 import threading
+import time
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [模拟器] %(message)s")
 logger = logging.getLogger(__name__)
@@ -35,6 +36,10 @@ RST_TRIGGER_TARGET = 0x1721
 
 # 触发RST的UDS服务ID。None 表示任意服务都触发。
 RST_TRIGGER_SID = None
+
+# 上位机读取 VIN (22 F1 90) 时的响应延时，单位秒。
+# 0 表示立即响应。
+VIN_READ_RESPONSE_DELAY_SEC = 2.0
 
 # 模拟ECU数据
 ECU_DATA = {
@@ -152,6 +157,13 @@ def handle_diagnostic_message(source_addr: int, target_addr: int,
     elif sid == 0x22:
         if len(uds_data) < 3:
             return b"\x7F\x22\x13"
+
+        if uds_data == bytes.fromhex("22 F1 90") and VIN_READ_RESPONSE_DELAY_SEC > 0:
+            logger.info(
+                f"模拟VIN读取响应延时 {VIN_READ_RESPONSE_DELAY_SEC:.3f}s"
+            )
+            time.sleep(VIN_READ_RESPONSE_DELAY_SEC)
+
         response = bytes([0x62])
         i = 1
         while i + 1 < len(uds_data):
@@ -476,7 +488,7 @@ def run_udp_server(port: int):
                     sync_status = b"\x00"
 
                     announcement = (vin + logical_addr + eid + gid +
-                                     further_action + sync_status)
+                                    further_action + sync_status)
                     resp = build_doip_message(0x0004, announcement)
                     sock.sendto(resp, addr)
                     logger.info(
@@ -499,6 +511,7 @@ def main():
     print(f"  后端ECU地址:  0x{ECU_LOGICAL_ADDRESS:04X}")
     print(f"  模拟VIN:      LSVAB1234S0000001")
     print(f"  安全访问密钥: {SECURITY_KEY.hex().upper()}")
+    print(f"  VIN读取延时:  {VIN_READ_RESPONSE_DELAY_SEC:.3f}s")
     print(f"  TCP RST模拟:  {'ON' if SIMULATE_TCP_RST_ON_DIAG else 'OFF'}")
     print("=" * 60)
     print("  模拟功能:")

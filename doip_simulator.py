@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 DoIP ECU模拟器 - 在本地模拟一个DoIP网关+ECU
 用于在没有实车的情况下测试DoIP诊断工具
@@ -532,9 +531,6 @@ def main():
     print("    - ECU复位")
     print("    - TesterPresent")
     print("=" * 60)
-    print("  示例:")
-    print("    正确目标: ip 127.0.0.1 -> target 0x07E0 -> connect -> 10 01 -> 22 F1 90")
-    print("    错误目标: ip 127.0.0.1 -> target 0x1720 -> connect -> 22 F1 90")
     if SIMULATE_TCP_RST_ON_DIAG:
         trigger_target = "ANY" if RST_TRIGGER_TARGET is None else f"0x{RST_TRIGGER_TARGET:04X}"
         trigger_sid = "ANY" if RST_TRIGGER_SID is None else f"0x{RST_TRIGGER_SID:02X}"
